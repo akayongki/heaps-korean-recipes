@@ -225,9 +225,18 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15
 <div class="toast" id="toast"></div>
 
 <script>
-// 토큰은 Vercel 환경변수에서 주입 — 빌드 시 %%GIST_TOKEN%% 가 실제 값으로 교체됨
-const TOKEN     = '%%GIST_TOKEN%%';
 const GIST_FILE = 'heaps_korean_recipes.json';
+let TOKEN = '';
+
+async function initToken() {
+  try {
+    const r = await fetch('/api/token');
+    const d = await r.json();
+    TOKEN = d.token || '';
+  } catch(e) {
+    console.warn('Token fetch failed', e);
+  }
+}
 
 const CONV = {
   metric:   {g:{f:1,u:'g'},kg:{f:1000,u:'g'},ml:{f:1,u:'ml'},l:{f:1000,u:'ml'},tsp:{f:4.929,u:'ml'},tbsp:{f:14.787,u:'ml'},cup:{f:240,u:'ml'},pcs:{f:1,u:'pcs'},portion:{f:1,u:'portion'}},
@@ -514,7 +523,12 @@ function showToast(msg){
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
 }
 
-loadGist();
+async function init() {
+  await initToken();
+  await loadGist();
+}
+
+init();
 </script>
 </body>
 </html>
