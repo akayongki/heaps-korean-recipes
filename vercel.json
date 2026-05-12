@@ -1,0 +1,5 @@
+{
+  "buildCommand": "sed -i 's|%%GIST_TOKEN%%|'\"$GIST_TOKEN\"'|g' index.html",
+  "outputDirectory": ".",
+  "framework": null
+}
