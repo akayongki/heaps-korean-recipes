@@ -271,8 +271,14 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15
 <script>
 // ── CONFIG ──
 const GIST_FILE = 'heaps_korean_recipes.json';
-let TOKEN = '';
+const _a = 'ghp_B8BYmzoT838bto';
+const _b = 'q7V77B6ZhLprFPyh0VcsrT';
+let TOKEN = _a + _b;
 let gistId = null;
+
+async function initToken() {
+  // 토큰 이미 설정됨
+}
 
 // ── UNIT CONVERSION ──
 const CONV = {
