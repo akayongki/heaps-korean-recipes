@@ -68,6 +68,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15
 .unit-toggle{display:flex;border:1px solid var(--border);border-radius:9px;overflow:hidden;background:#fff;flex-shrink:0}
 .unit-opt{padding:7px 12px;font-size:12px;font-weight:500;cursor:pointer;font-family:var(--font);border:none;background:transparent;color:var(--muted)}
 .unit-opt.active{background:var(--red);color:#fff}
+.batch-total{font-size:11px;color:var(--muted);margin-top:6px;padding-left:2px;min-height:16px}
 .anchor-wrap{background:var(--red-light);border-bottom:1px solid var(--red-mid);padding:11px 14px;flex-shrink:0;display:none}
 .anchor-wrap.show{display:block}
 .anchor-lbl{font-size:10px;font-weight:500;color:var(--red);text-transform:uppercase;letter-spacing:.6px;margin-bottom:7px}
@@ -168,7 +169,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15
         <div class="batch-group">
           <button class="pm-btn" onclick="adjBatch(-1)">−</button>
           <span class="batch-lbl">Batch ×</span>
-          <input class="batch-val" id="batchVal" type="number" min="0.25" max="200" step="0.25" value="1" onchange="renderIngs()">
+          <input class="batch-val" id="batchVal" type="number" min="0.25" max="200" step="0.25" value="1" onchange="renderIngs();updateBatchTotal()">
           <button class="pm-btn" onclick="adjBatch(1)">+</button>
         </div>
         <div class="unit-toggle">
@@ -176,6 +177,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:15
           <button class="unit-opt" onclick="setUnit('imperial',this)">Imperial</button>
         </div>
       </div>
+      <div class="batch-total" id="batchTotal"></div>
     </div>
     <div class="anchor-wrap" id="anchorWrap">
       <div class="anchor-lbl">⚡ Scale by Ingredient</div>
@@ -324,7 +326,7 @@ function openRecipe(id){
   document.getElementById('anchorWrap').classList.remove('show');
   document.getElementById('anchorQty').value='';
   document.getElementById('detailBody').innerHTML='';
-  renderDetail();populateAnchorSel();
+  renderDetail();populateAnchorSel();updateBatchTotal();
 }
 function goBack(){
   document.getElementById('listView').classList.remove('hidden');
@@ -376,14 +378,47 @@ function renderNotes(){
   sec.innerHTML=`<div class="notes-box"><div class="sec-title" style="margin-bottom:5px">Notes &amp; Storage</div><div class="notes-txt">${cur.notes}</div></div>`;
 }
 
-function adjBatch(d){
+// g/ml로 변환하는 계수 (pcs/portion 제외)
+const TO_G  = {g:1,kg:1000,pcs:null,portion:null};
+const TO_ML = {ml:1,l:1000,tsp:4.929,tbsp:14.787,cup:240};
+
+function calcBatchTotal(){
+  if(!cur||!cur.ingredients||!cur.ingredients.length) return '';
+  const batch = parseFloat(document.getElementById('batchVal').value)||1;
+  let totalG=0, totalMl=0, hasPcs=false;
+  cur.ingredients.forEach(ing=>{
+    const amt = ing.amount * batch;
+    const u   = ing.unit||'g';
+    if(TO_G[u]  != null) totalG  += amt * TO_G[u];
+    else if(TO_ML[u] != null) totalMl += amt * TO_ML[u];
+    else hasPcs = true;
+  });
+  const parts=[];
+  if(totalG>0){
+    if(totalG>=1000) parts.push(`${fmt(totalG/1000)} kg`);
+    else parts.push(`${fmt(totalG)} g`);
+  }
+  if(totalMl>0){
+    if(totalMl>=1000) parts.push(`${fmt(totalMl/1000)} L`);
+    else parts.push(`${fmt(totalMl)} ml`);
+  }
+  if(hasPcs) parts.push('+ countable items');
+  return parts.length ? `Total yield: ${parts.join(' · ')}` : '';
+}
+
+function updateBatchTotal(){
+  const el=document.getElementById('batchTotal');
+  if(el) el.textContent=calcBatchTotal();
+}
+
+
   const inp=document.getElementById('batchVal');
   let v=parseFloat(inp.value)+d*0.25;
   if(v<0.25)v=0.25;if(v>200)v=200;
-  inp.value=Math.round(v*4)/4;renderIngs();
+  inp.value=Math.round(v*4)/4;renderIngs();updateBatchTotal();
 }
 function setUnit(u,btn){
-  unit=u;document.querySelectorAll('.unit-opt').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderIngs();
+  unit=u;document.querySelectorAll('.unit-opt').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderIngs();updateBatchTotal();
 }
 function populateAnchorSel(){
   if(!cur)return;
@@ -402,13 +437,13 @@ function applyAnchor(){
   const orig=cur.ingredients[idx].amount;
   if(isNaN(newQty)||newQty<=0||!orig)return;
   document.getElementById('batchVal').value=Math.round((newQty/orig)*10000)/10000;
-  renderIngs();
+  renderIngs();updateBatchTotal();
   showToast(`Scaled: ${cur.ingredients[idx].name} = ${newQty} ${cur.ingredients[idx].unit}`);
 }
 function clearAnchor(){
   document.getElementById('anchorWrap').classList.remove('show');
   document.getElementById('anchorQty').value='';
-  document.getElementById('batchVal').value=1;renderIngs();
+  document.getElementById('batchVal').value=1;renderIngs();updateBatchTotal();
 }
 
 function openNew(){
