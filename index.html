@@ -843,9 +843,9 @@ let scaleIngredientIndex = null;
 // INIT
 // ─────────────────────────────────────────────
 async function init() {
-  const savedGist = sessionStorage.getItem('hk_gist_id');
-  const savedA = sessionStorage.getItem('hk_ta');
-  const savedB = sessionStorage.getItem('hk_tb');
+  const savedGist = localStorage.getItem('hk_gist_id');
+  const savedA = localStorage.getItem('hk_ta');
+  const savedB = localStorage.getItem('hk_tb');
   if (savedGist) { GIST_ID = savedGist; }
   if (savedA && savedB) { GITHUB_TOKEN = savedA + savedB; }
 
@@ -882,9 +882,9 @@ async function applySetup() {
   if (!ta || !tb) { alert('Please enter both token halves.'); return; }
   GITHUB_TOKEN = ta + tb;
   if (gid) { GIST_ID = gid; }
-  sessionStorage.setItem('hk_ta', ta);
-  sessionStorage.setItem('hk_tb', tb);
-  if (gid) { sessionStorage.setItem('hk_gist_id', gid); }
+  localStorage.setItem('hk_ta', ta);
+  localStorage.setItem('hk_tb', tb);
+  if (gid) { localStorage.setItem('hk_gist_id', gid); }
   document.getElementById('loadingOverlay').classList.remove('hidden');
   try {
     await loadFromGist();
@@ -939,7 +939,7 @@ async function saveToGist() {
     if (!res.ok) { setSyncStatus('err'); throw new Error('Create gist failed: ' + res.status); }
     const data = await res.json();
     GIST_ID = data.id;
-    sessionStorage.setItem('hk_gist_id', GIST_ID);
+    localStorage.setItem('hk_gist_id', GIST_ID);
   } else {
     res = await fetch('https://api.github.com/gists/' + GIST_ID, {
       method: 'PATCH',
