@@ -622,26 +622,18 @@
   <div class="loading-sub">Loading recipes...</div>
 </div>
 
-<!-- SETUP SCREEN (shown if no token) -->
+<!-- SETUP SCREEN (shown if no PIN) -->
 <div id="setupScreen" style="display:none;">
   <header>
     <div class="header-logo">HEAPS<span>KOREAN</span></div>
   </header>
   <div class="setup-screen">
     <h2>Setup</h2>
-    <p>Enter your GitHub Personal Access Token (Gist scope) and optionally an existing Gist ID to load recipes. Tokens are stored in memory only — never on disk.</p>
+    <p>Enter the staff PIN to load recipes. The GitHub connection is handled by the server — no token is stored in this browser. The PIN is kept only for this tab (cleared when it's closed).</p>
     <div class="token-fields">
       <div class="form-group">
-        <label class="form-label">Token — First Half</label>
-        <input class="form-input" id="setupTokenA" type="password" placeholder="ghp_xxxxxxxxxxxx..." autocomplete="off">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Token — Second Half</label>
-        <input class="form-input" id="setupTokenB" type="password" placeholder="...remainder" autocomplete="off">
-      </div>
-      <div class="form-group gist-field">
-        <label class="form-label">Gist ID (optional — leave blank to create new)</label>
-        <input class="form-input" id="setupGistId" type="text" placeholder="abc123def456...">
+        <label class="form-label">Staff PIN</label>
+        <input class="form-input" id="setupPin" type="password" placeholder="Enter PIN" autocomplete="off" inputmode="numeric">
       </div>
     </div>
     <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="applySetup()">Connect & Load Recipes</button>
@@ -805,12 +797,11 @@
 
 <script>
 // ─────────────────────────────────────────────
-// TOKEN CONFIG — split to avoid GitHub scanning
-// Replace the two halves with your actual token parts:
+// AUTH — the GitHub token never touches this file or the
+// browser. /api/recipes.js holds it server-side; the client
+// only carries a staff PIN, kept in sessionStorage for this tab.
 // ─────────────────────────────────────────────
-let GITHUB_TOKEN = '';
-
-   let GIST_ID = 'd7c7bf5a640d1711148a46a38f0e308b'; // 기존 Gist ID 유지
+let PIN = '';
 
 // ─────────────────────────────────────────────
 // DEFAULT RECIPES
@@ -843,15 +834,10 @@ let scaleIngredientIndex = null;
 // INIT
 // ─────────────────────────────────────────────
 async function init() {
-  const savedGist = localStorage.getItem('hk_gist_id');
-  const savedA = localStorage.getItem('hk_ta');
-  const savedB = localStorage.getItem('hk_tb');
-  if (savedGist) { GIST_ID = savedGist; }
-  if (savedA && savedB) { GITHUB_TOKEN = savedA + savedB; }
+  const savedPin = sessionStorage.getItem('hk_pin');
+  if (savedPin) { PIN = savedPin; }
 
-  const hasToken = GITHUB_TOKEN && !GITHUB_TOKEN.includes('PASTE_');
-
-  if (!hasToken) {
+  if (!PIN) {
     hideLoading();
     showSetup();
     return;
@@ -863,10 +849,18 @@ async function init() {
     showMain();
   } catch(e) {
     console.error('Load error', e);
+    if (e.status === 401) {
+      PIN = '';
+      sessionStorage.removeItem('hk_pin');
+      hideLoading();
+      showSetup();
+      showToast('⚠ Wrong PIN');
+      return;
+    }
     recipes = JSON.parse(JSON.stringify(DEFAULT_RECIPES));
     hideLoading();
     showMain();
-    showToast('⚠ Loaded defaults — check token/Gist');
+    showToast('⚠ Loaded defaults — check connection');
   }
 }
 
@@ -876,15 +870,10 @@ function showSetup() { document.getElementById('setupScreen').style.display = ''
 function openSetup() { closePanel(); showSetup(); }
 
 async function applySetup() {
-  const ta = document.getElementById('setupTokenA').value.trim();
-  const tb = document.getElementById('setupTokenB').value.trim();
-  const gid = document.getElementById('setupGistId').value.trim();
-  if (!ta || !tb) { alert('Please enter both token halves.'); return; }
-  GITHUB_TOKEN = ta + tb;
-  if (gid) { GIST_ID = gid; }
-  localStorage.setItem('hk_ta', ta);
-  localStorage.setItem('hk_tb', tb);
-  if (gid) { localStorage.setItem('hk_gist_id', gid); }
+  const pin = document.getElementById('setupPin').value.trim();
+  if (!pin) { alert('Please enter the staff PIN.'); return; }
+  PIN = pin;
+  sessionStorage.setItem('hk_pin', pin);
   document.getElementById('loadingOverlay').classList.remove('hidden');
   try {
     await loadFromGist();
@@ -893,8 +882,15 @@ async function applySetup() {
     showToast('✓ Connected!');
   } catch(e) {
     hideLoading();
+    if (e.status === 401) {
+      PIN = '';
+      sessionStorage.removeItem('hk_pin');
+      showSetup();
+      showToast('⚠ Wrong PIN');
+      return;
+    }
     showMain();
-    showToast('⚠ Could not load Gist, initialized defaults');
+    showToast('⚠ Could not load recipes, initialized defaults');
     recipes = JSON.parse(JSON.stringify(DEFAULT_RECIPES));
     renderList();
   }
@@ -909,44 +905,33 @@ function setSyncStatus(s) {
 }
 
 async function loadFromGist() {
-  if (!GIST_ID) {
-    recipes = JSON.parse(JSON.stringify(DEFAULT_RECIPES));
-    await saveToGist();
-    return;
-  }
   setSyncStatus('syncing');
-  const res = await fetch('https://api.github.com/gists/' + GIST_ID, {
-    headers: { Authorization: 'token ' + GITHUB_TOKEN, Accept: 'application/vnd.github.v3+json' }
+  const res = await fetch('/api/recipes', {
+    headers: { 'x-app-pin': PIN }
   });
-  if (!res.ok) throw new Error('Gist fetch failed: ' + res.status);
+  if (!res.ok) {
+    setSyncStatus('err');
+    const err = new Error('Recipe fetch failed: ' + res.status);
+    err.status = res.status;
+    throw err;
+  }
   const data = await res.json();
-  const file = data.files && data.files['heaps-korean-recipes.json'];
-  if (!file) throw new Error('File not found in Gist');
-  recipes = JSON.parse(file.content);
+  recipes = data.recipes;
   setSyncStatus('ok');
 }
 
 async function saveToGist() {
   setSyncStatus('syncing');
-  const content = JSON.stringify(recipes, null, 2);
-  let res;
-  if (!GIST_ID) {
-    res = await fetch('https://api.github.com/gists', {
-      method: 'POST',
-      headers: { Authorization: 'token ' + GITHUB_TOKEN, 'Content-Type': 'application/json', Accept: 'application/vnd.github.v3+json' },
-      body: JSON.stringify({ description: 'Heaps Korean Recipes', public: false, files: { 'heaps-korean-recipes.json': { content } } })
-    });
-    if (!res.ok) { setSyncStatus('err'); throw new Error('Create gist failed: ' + res.status); }
-    const data = await res.json();
-    GIST_ID = data.id;
-    localStorage.setItem('hk_gist_id', GIST_ID);
-  } else {
-    res = await fetch('https://api.github.com/gists/' + GIST_ID, {
-      method: 'PATCH',
-      headers: { Authorization: 'token ' + GITHUB_TOKEN, 'Content-Type': 'application/json', Accept: 'application/vnd.github.v3+json' },
-      body: JSON.stringify({ files: { 'heaps-korean-recipes.json': { content } } })
-    });
-    if (!res.ok) { setSyncStatus('err'); throw new Error('Patch gist failed: ' + res.status); }
+  const res = await fetch('/api/recipes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-app-pin': PIN },
+    body: JSON.stringify({ recipes })
+  });
+  if (!res.ok) {
+    setSyncStatus('err');
+    const err = new Error('Recipe save failed: ' + res.status);
+    err.status = res.status;
+    throw err;
   }
   setSyncStatus('ok');
 }
